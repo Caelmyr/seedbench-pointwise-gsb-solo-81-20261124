@@ -24,6 +24,8 @@ DEFAULTS = {
     "screen_mm": 4.4,
     "blue_margin": 15,
     "pale_threshold": 208,
+    "glare_floor": 212,
+    "shadow_ceiling": 52,
 }
 
 MAX_PHOTOS = 24
@@ -72,7 +74,7 @@ def coordinates(values, length, label):
 
 
 def settings(values, base=None):
-    value = {**(base or DEFAULTS), **document(values)}
+    value = {**DEFAULTS, **(base or {}), **document(values)}
     area = coordinates(value["area"], 4, "the inspection rectangle")
     if area[2] - area[0] < 0.025 or area[3] - area[1] < 0.025:
         raise Invalid("Draw a larger inspection rectangle.")
@@ -91,6 +93,8 @@ def settings(values, base=None):
         "screen_mm": number(value["screen_mm"], "the screen opening in mm", 0.1, 100),
         "blue_margin": number(value["blue_margin"], "the blue excess", 1, 150),
         "pale_threshold": number(value["pale_threshold"], "the pale mark brightness", 60, 250),
+        "glare_floor": number(value["glare_floor"], "the glare brightness floor", 150, 255),
+        "shadow_ceiling": number(value["shadow_ceiling"], "the shadow brightness ceiling", 5, 250),
     }
 
 

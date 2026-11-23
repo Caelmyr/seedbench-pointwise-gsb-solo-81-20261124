@@ -93,16 +93,59 @@ class Library:
             write_json(self.tray_path(tray_id), tray)
             return tray
 
+    def used(self, digest):
+        for row in self.list():
+            tray = self.tray(row["id"])
+            if tray["blob"] == digest or tray.get("companion", {}).get("blob") == digest:
+                return True
+        return False
+
+    def attach(self, tray_id, revision, filename, source, width, height):
+        with self.guard:
+            tray = self.tray(tray_id)
+            self.revision(tray, revision)
+            if (width, height) != (tray["width"], tray["height"]):
+                raise Invalid("The second photo must match the tray photo size.")
+            digest = sha256(source).hexdigest()
+            if digest == tray["blob"]:
+                raise Invalid("This is the same photo as the tray photo.")
+            content = self.blob(digest)
+            if not content.exists():
+                atomic_write(content, source)
+            previous = tray.get("companion", {}).get("blob")
+            tray["companion"] = {"blob": digest, "filename": filename, "added": stamp()}
+            tray.update(revision=revision+1, updated=stamp())
+            write_json(self.tray_path(tray_id), tray)
+            if previous and previous != digest and not self.used(previous):
+                self.blob(previous).unlink(missing_ok=True)
+            return tray
+
+    def detach(self, tray_id, revision):
+        with self.guard:
+            tray = self.tray(tray_id)
+            self.revision(tray, revision)
+            companion = tray.pop("companion", None)
+            if companion is None:
+                raise Invalid("This tray has no second photo.")
+            tray.update(revision=revision+1, updated=stamp())
+            write_json(self.tray_path(tray_id), tray)
+            if not self.used(companion["blob"]):
+                self.blob(companion["blob"]).unlink(missing_ok=True)
+            return tray
+
     def remove(self, tray_id, revision):
         with self.guard:
             tray = self.tray(tray_id)
             self.revision(tray, revision)
-            digest = tray["blob"]
+            digests = {tray["blob"]}
+            if tray.get("companion"):
+                digests.add(tray["companion"]["blob"])
             self.tray_path(tray_id).unlink()
             for proof in tray["proofs"]:
                 self.proof_path(tray_id, proof["id"]).unlink(missing_ok=True)
-            if not any(self.tray(row["id"])["blob"] == digest for row in self.list()):
-                self.blob(digest).unlink(missing_ok=True)
+            for digest in digests:
+                if not self.used(digest):
+                    self.blob(digest).unlink(missing_ok=True)
 
     def proof_path(self, tray_id, proof_id):
         return self.root / "proofs" / key(tray_id) / (key(proof_id) + ".json")
@@ -121,6 +164,8 @@ class Library:
             if len(tray["proofs"]) >= MAX_PROOFS:
                 raise Invalid(f"A tray holds up to {MAX_PROOFS} saved checks.")
             row = {**result, "id": identity(), "revision": revision, "saved": stamp(), "source": tray["blob"]}
+            if result.get("paired") and tray.get("companion"):
+                row["companion"] = tray["companion"]["blob"]
             path = self.proof_path(tray_id, row["id"])
             write_json(path, row)
             tray["proofs"].append({k: row[k] for k in ("id", "mode", "title", "saved")})

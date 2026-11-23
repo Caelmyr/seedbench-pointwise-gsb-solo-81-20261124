@@ -35,7 +35,12 @@
         <label class="tray-label">Working tray <select id="tray-select" aria-label="Working tray"></select></label>
         <span id="source-details"></span>
         <details class="tray-actions">
-          <summary>Manage trays</summary>
+          <summary>Manage tray</summary>
+          <form id="companion-form" class="intake">
+            <label>Second photo · aligned, same size<input name="file" type="file" accept="image/png,image/jpeg,image/webp" required></label>
+            <button class="secondary">Upload second photo</button>
+            <button id="companion-remove" class="danger" type="button" hidden>Remove second photo</button>
+          </form>
           <button id="remove" class="danger">Remove this tray</button>
         </details>
       </div>
@@ -69,6 +74,8 @@
               <label>Smallest grain <span>mm²</span><input name="min_seed_mm2" type="number" min="0.05" max="300" step="any" required></label>
               <label data-mode="grade">Screen opening <span>mm</span><input name="screen_mm" type="number" min="0.1" max="100" step="any" required></label>
               <label data-mode="coat">Blue excess<input name="blue_margin" type="number" min="1" max="150" step="any" required></label>
+              <label data-mode="coat">Glare floor<input name="glare_floor" type="number" min="150" max="255" step="any" required></label>
+              <label data-mode="coat">Shadow ceiling<input name="shadow_ceiling" type="number" min="5" max="250" step="any" required></label>
               <label data-mode="surface">Pale mark floor<input name="pale_threshold" type="number" min="60" max="250" step="any" required></label>
             </div>
             <div class="actions run">

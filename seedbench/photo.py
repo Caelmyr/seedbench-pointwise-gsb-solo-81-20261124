@@ -50,6 +50,14 @@ def luminance(rgb):
     return cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
 
 
+def frame_view(image, settings):
+    """Crop an aligned same-size companion photo to the inspection rectangle."""
+    x0, y0, x1, y1 = photo_box(settings["area"], image.size)
+    frame = np.asarray(image)[y0:y1, x0:x1]
+    rgb = frame[..., :3].copy()
+    return {"rgb": rgb, "light": luminance(rgb), "supported": frame[..., 3] >= 205}
+
+
 def observe(image, settings):
     """Return source-coordinate grain candidates inside the inspection rectangle."""
     scale = pixel_scale(settings, image.size)
@@ -93,5 +101,5 @@ def observe(image, settings):
             "light": crop_light,
             "partial": partial,
         })
-    return {"scale": scale, "area": (x0, y0, x1, y1),
+    return {"scale": scale, "area": (x0, y0, x1, y1), "rgb": rgb,
             "candidates": candidates, "supported": supported, "light": light}

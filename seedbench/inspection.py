@@ -5,6 +5,7 @@ from collections import Counter
 import cv2
 import numpy as np
 
+from . import dual
 from .model import MODES
 
 
@@ -77,7 +78,83 @@ def item_status(part, kind, mode, settings):
     return "grain", readable(part["area"])
 
 
-def report(observation, mode, settings):
+def exposed_marks(window, selection, offset):
+    """Bounding boxes of the exposed-base clusters inside one grain."""
+    found, _, stats, _ = cv2.connectedComponentsWithStats(
+        (window & selection).astype(np.uint8), connectivity=8)
+    marks = []
+    for label in range(1, found):
+        x, y, w, h, pixels = (int(value) for value in stats[label])
+        if pixels >= 2:
+            marks.append([x + offset[0], y + offset[1], w, h])
+    return marks
+
+
+def coat_reading(part, fused, observation, row):
+    """Fill one grain row with judgeable area, coverage and exposed evidence."""
+    scale = observation["scale"]
+    x0, y0 = observation["area"][:2]
+    bx, by, w, h = part["box"]
+    window = (slice(by - y0, by - y0 + h), slice(bx - x0, bx - x0 + w))
+    selection = part["mask"]
+    judged = int(np.count_nonzero(fused["judgeable"][window][selection]))
+    exposed = int(np.count_nonzero(fused["exposed"][window][selection]))
+    total = part["pixels"]
+    exposed_mm2 = exposed * scale * scale
+    row["coverage"] = readable(100 * (judged - exposed) / judged, 1) if judged else None
+    row["judgeable_mm2"] = readable(judged * scale * scale)
+    row["exposed_mm2"] = readable(exposed_mm2)
+    row["recheck_pct"] = readable(100 * (total - judged) / total, 1)
+    row["marks"] = exposed_marks(fused["exposed"][window], selection, (bx, by))
+    if judged < dual.RECHECK_GRAIN * total:
+        return "recheck"
+    if exposed_mm2 >= dual.EXPOSED_MIN_MM2 or exposed >= dual.EXPOSED_MIN_FRACTION * max(judged, 1):
+        return "exposed"
+    return "coated" if row["coverage"] >= 70 else "verify"
+
+
+def dual_report(observation, settings, companion):
+    """One coating check from two aligned photos of the same tray."""
+    fused = dual.fuse(observation, companion, settings)
+    x0, y0 = observation["area"][:2]
+    counts = Counter()
+    grains = []
+    rows = []
+    for part in observation["candidates"]:
+        kind = classification(part, settings)
+        row = {
+            "id": part["id"], "box": list(part["box"]),
+            "centre": [readable(n) for n in part["centre"]],
+            "kind": kind, "area_mm2": readable(part["area"]),
+            "width_mm": readable(part["width"]), "coverage": None,
+            "judgeable_mm2": None, "exposed_mm2": None, "recheck_pct": None, "marks": [],
+        }
+        if kind == "grain" and not part["partial"]:
+            grains.append(part)
+            status = coat_reading(part, fused, observation, row)
+        elif part["partial"]:
+            status = "partial"
+        else:
+            status = kind
+        row.update(status=status, value=row["coverage"])
+        counts[status] += 1
+        rows.append(row)
+    judged = np.count_nonzero(fused["judgeable"])
+    return {
+        "mode": "coat", "title": MODES["coat"], "paired": True,
+        "area": list(observation["area"]),
+        "mm_per_pixel": readable(observation["scale"], 6),
+        "supported_pct": readable(100 * np.mean(observation["supported"]), 1),
+        "judged_pct": readable(100 * judged / fused["foreground"], 1) if fused["foreground"] else None,
+        "visible_grains": len(grains), "counts": dict(counts), "rows": rows,
+        "patches": [[x + x0, y + y0, w, h] for x, y, w, h in fused["patches"]],
+        "zones": [], "settings": settings,
+    }
+
+
+def report(observation, mode, settings, companion=None):
+    if mode == "coat" and companion is not None:
+        return dual_report(observation, settings, companion)
     counts = Counter()
     grains = []
     rows = []

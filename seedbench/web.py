@@ -19,7 +19,11 @@ def payload():
 def make_result(library, tray, mode, settings):
     with Image.open(library.blob(tray["blob"])) as asset:
         view = photo.observe(asset.convert("RGBA"), settings)
-    return inspection.report(view, mode, settings)
+    companion = None
+    if mode == "coat" and tray.get("companion"):
+        with Image.open(library.blob(tray["companion"]["blob"])) as second:
+            companion = photo.frame_view(second.convert("RGBA"), settings)
+    return inspection.report(view, mode, settings, companion)
 
 
 def install(app, root):
@@ -92,6 +96,26 @@ def install(app, root):
     def remove(tray_id):
         library.remove(tray_id, payload().get("revision"))
         return Response(status=204)
+
+    @api.post("/trays/<tray_id>/companion")
+    def companion(tray_id):
+        tray = library.tray(tray_id)
+        file = request.files.get("file")
+        if file is None:
+            raise Invalid("Choose the second tray photo.")
+        try:
+            revision = int(request.form.get("revision", ""))
+        except ValueError:
+            raise Invalid("Enter the current tray revision.") from None
+        filename = model.filename(file.filename)
+        image = photo.decode(file.stream.read(model.MAX_UPLOAD + 1))
+        if image.size != (tray["width"], tray["height"]):
+            raise Invalid(f"The second photo must be aligned to the tray photo at {tray['width']} × {tray['height']} pixels.")
+        return jsonify(library.attach(tray_id, revision, filename, photo.png(image), *image.size)), 201
+
+    @api.delete("/trays/<tray_id>/companion")
+    def companion_remove(tray_id):
+        return jsonify(library.detach(tray_id, payload().get("revision")))
 
     @api.get("/trays/<tray_id>/image")
     def source(tray_id):
