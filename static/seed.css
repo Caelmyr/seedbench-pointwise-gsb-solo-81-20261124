@@ -69,6 +69,15 @@ canvas.marking { cursor: crosshair; }
 #proofs button[aria-current="true"] { background: var(--chartreuse); }
 .control form, .hint, .downloads { margin: 10px 12px; }
 .hint { line-height: 1.45; color: var(--muted); font-size: 13px; }
+.variants { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; margin: 0 12px 10px; }
+.variant { display: grid; gap: 3px; justify-items: start; text-align: left; padding: 9px 11px; border: 1px solid var(--line); border-radius: 6px; background: var(--paper); }
+.variant:hover { background: var(--pale); }
+.variant[aria-current="true"] { background: var(--chartreuse); border-color: #9fb36a; }
+.variant-name { font-size: 12px; font-weight: 750; }
+.variant strong { font: 600 24px/1 'Georgia', serif; }
+.variant-sub { font-size: 11px; color: var(--muted); }
+.variant-tag { font-size: 10px; font-style: normal; font-weight: 800; text-transform: uppercase; letter-spacing: .08em; color: var(--green); }
+.variant-hint { grid-column: 1 / -1; margin: 0; font-size: 11px; color: var(--muted); }
 .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 9px; }
 label { display: block; font-size: 12px; font-weight: 700; }
 label span { color: var(--muted); font-weight: 500; }

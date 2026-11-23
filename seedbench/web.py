@@ -8,7 +8,7 @@ from PIL import Image
 
 from image_lab.validation import Invalid
 
-from . import demo, inspection, model, output, photo
+from . import demo, inspection, model, output, photo, tally
 from .store import Library
 
 
@@ -16,9 +16,11 @@ def payload():
     return model.document(request.get_json(silent=True))
 
 
-def make_result(library, tray, mode, settings):
+def make_result(library, tray, mode, settings, policy=None):
     with Image.open(library.blob(tray["blob"])) as asset:
         view = photo.observe(asset.convert("RGBA"), settings)
+    if mode == "tally":
+        return tally.report(view, settings, policy)
     return inspection.report(view, mode, settings)
 
 
@@ -36,7 +38,7 @@ def install(app, root):
 
     @api.get("/config")
     def config():
-        return jsonify(settings=model.DEFAULTS, modes=model.MODES)
+        return jsonify(settings=model.DEFAULTS, modes=model.MODES, policies=model.POLICIES)
 
     @api.get("/trays")
     def trays():
@@ -111,7 +113,8 @@ def install(app, root):
         revision = value.get("revision")
         library.revision(tray, revision)
         mode = model.mode(value.get("mode"))
-        result = make_result(library, tray, mode, tray["settings"])
+        policy = model.policy(value.get("policy")) if mode == "tally" else None
+        result = make_result(library, tray, mode, tray["settings"], policy)
         current, saved = library.retain(tray_id, revision, result)
         return jsonify(tray=current, proof=saved), 201
 

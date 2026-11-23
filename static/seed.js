@@ -5,25 +5,31 @@ const canvas = $("canvas");
 const ctx = canvas.getContext("2d");
 const modeInfo = {
   count: "Review the complete grain outlines inside the marked tray area. Partial objects are shown separately.",
+  tally: "Count a tray with touching grains two ways — cautious and fewer re-shoots — then adopt one version. Only recognizable grain shapes are confirmed; unclear clumps stay listed for a new photo.",
   grade: "Compare the narrow projected width of each complete grain with a single screen opening.",
   coat: "Compare the share of blue pixels on each complete grain. Glare and shadows can change this estimate.",
   debris: "Find light, low-color fragments and unusually long pieces before hand sorting.",
   surface: "Flag bright patches inside the grain. The marks are indications for hand review.",
   zones: "Compare grain density across a 3 × 3 grid of equal image regions."
 };
+const policyInfo = {
+  cautious: "Split only pairs whose own grain shapes are still visible; every unclear clump waits for a new photo.",
+  thorough: "Recognize as many grains as this photo allows; only inseparable clumps wait for a new photo."
+};
 const names = {
   grain: "Grain", partial: "Partial", speck: "Small fleck", foreign: "Foreign",
-  retained: "Retained", through: "Through"
+  retained: "Retained", through: "Through", split: "Split grain", clump: "Clump · recheck"
 };
 Object.assign(names, {coated: "Coated", verify: "Verify coating", clear: "Clear", mark: "Pale mark"});
 const ink = {
   grain: "#a3ed83", retained: "#a3ed83", coated: "#a3ed83", clear: "#a3ed83",
   through: "#62d3ed", verify: "#ffc875", mark: "#ffc875", foreign: "#ff9176",
-  partial: "#e1c9f2", speck: "#bcb6a1",
+  partial: "#e1c9f2", speck: "#bcb6a1", split: "#62d3ed", clump: "#ffc875"
 };
 const state = {
-  tray: null, modes: {}, mode: "count", image: null, settings: null,
-  report: null, ticket: 0, saved: null, chosen: null, draw: null, drag: null, original: false
+  tray: null, modes: {}, policies: {}, mode: "count", image: null, settings: null,
+  report: null, ticket: 0, saved: null, chosen: null, draw: null, drag: null, original: false,
+  policy: "cautious"
 };
 
 async function call(path, method = "GET", data) {
@@ -118,6 +124,7 @@ async function openTray(id) {
   state.report = null;
   state.chosen = null;
   state.original = false;
+  state.policy = "cautious";
   turnOffDrawing();
   $("show-source").setAttribute("aria-pressed", "false");
   localStorage.setItem("seedbench-tray", id);
@@ -132,7 +139,8 @@ async function openTray(id) {
 
 function renderChrome() {
   const mode = state.saved ? state.report.mode : state.mode;
-  $("current-mode").textContent = state.modes[mode];
+  $("current-mode").textContent = state.modes[mode] +
+    (mode === "tally" && state.saved ? " · " + (state.policies[state.report.policy] || state.report.policy) : "");
   $("mode-info").textContent = modeInfo[mode];
   $("proof-label").textContent = state.saved ? "Saved check" : "Current tray";
   $("settings").hidden = Boolean(state.saved);
@@ -141,7 +149,8 @@ function renderChrome() {
   const proofs = state.tray.proofs;
   $("proof-count").textContent = String(proofs.length);
   $("proofs").replaceChildren(...proofs.slice().reverse().map((proof, i) => {
-    const control = button(proof.title + " · " + (proofs.length - i), () => openProof(proof.id), "tool");
+    const label = proof.title + (proof.policy ? " · " + (state.policies[proof.policy] || proof.policy) : "");
+    const control = button(label + " · " + (proofs.length - i), () => openProof(proof.id), "tool");
     control.setAttribute("aria-current", String(proof.id === state.saved));
     return control;
   }));
@@ -190,7 +199,9 @@ async function apply() {
 async function save() {
   if (!$("settings").reportValidity()) return;
   if (JSON.stringify(options()) !== JSON.stringify(state.tray.settings)) await apply();
-  const result = await call(trayPath() + "/proofs", "POST", {revision: state.tray.revision, mode: state.mode});
+  const body = {revision: state.tray.revision, mode: state.mode};
+  if (state.mode === "tally") body.policy = state.policy;
+  const result = await call(trayPath() + "/proofs", "POST", body);
   state.tray = result.tray;
   ++state.ticket;
   setProof(result.proof);
@@ -208,25 +219,80 @@ async function openProof(id) {
 function setProof(report) {
   state.saved = report.id;
   state.report = report;
+  if (report.mode === "tally") state.policy = report.policy || "cautious";
   state.chosen = null;
   turnOffDrawing();
   renderChrome();
   renderReport();
 }
 
+function variant() {
+  const report = state.report;
+  if (!report || report.mode !== "tally") return null;
+  return report.variants[state.policy] || report.variants[report.policy] || null;
+}
+
+function reportRows() {
+  const report = state.report;
+  if (!report) return [];
+  if (report.mode === "tally") return variant()?.rows || [];
+  return report.rows;
+}
+
+function renderVariants() {
+  const box = $("variants");
+  const report = state.report;
+  const show = Boolean(report && report.mode === "tally");
+  box.hidden = !show;
+  if (!show) return;
+  const cards = Object.entries(report.variants).map(([key, v]) => {
+    const card = button("", () => {
+      state.policy = key;
+      renderReport();
+    }, "variant");
+    card.setAttribute("aria-current", String(key === state.policy));
+    card.title = policyInfo[key] || "";
+    const name = el("span", state.policies[key] || key);
+    name.className = "variant-name";
+    const sub = el("span", `${v.singles} single · ${v.split} split · ${v.clumps} to recheck`);
+    sub.className = "variant-sub";
+    card.append(name, el("strong", String(v.confirmed)), sub);
+    if (state.saved && key === report.policy) {
+      const tag = el("em", "saved");
+      tag.className = "variant-tag";
+      card.append(tag);
+    }
+    return card;
+  });
+  const hint = el("p", state.saved ?
+    "This check keeps its saved version; you can still view both reads." :
+    "Compare both reads on the photo — the highlighted version is adopted by Save check.");
+  hint.className = "variant-hint";
+  box.replaceChildren(...cards, hint);
+}
+
 function renderReport() {
   draw();
   const report = state.report;
   $("results").hidden = !report;
+  renderVariants();
   $("measure-caption").textContent = report ? report.mm_per_pixel.toFixed(4) + " mm/px · " +
     report.supported_pct.toFixed(1) + "% photo support" : "";
   if (!report) return;
-  const stats = [["Visible grains", report.visible_grains]];
-  if (report.mode === "grade") stats.push(["Through screen", report.counts.through || 0], ["Retained", report.counts.retained || 0]);
-  if (report.mode === "coat") stats.push(["Coated", report.counts.coated || 0], ["Verify coating", report.counts.verify || 0]);
-  if (report.mode === "surface") stats.push(["Pale marks", report.counts.mark || 0]);
-  if (report.mode === "debris") stats.push(["Foreign material", report.counts.foreign || 0], ["Small flecks", report.counts.speck || 0]);
-  stats.push(["Partial objects", report.counts.partial || 0]);
+  let stats;
+  if (report.mode === "tally") {
+    const v = variant();
+    stats = [["Confirmed grains", v.confirmed], ["Single grains", v.singles],
+      ["Recognized from clumps", v.split], ["Clumps to recheck", v.clumps],
+      ["Partial objects", v.rows.filter(row => row.status === "partial").length]];
+  } else {
+    stats = [["Visible grains", report.visible_grains]];
+    if (report.mode === "grade") stats.push(["Through screen", report.counts.through || 0], ["Retained", report.counts.retained || 0]);
+    if (report.mode === "coat") stats.push(["Coated", report.counts.coated || 0], ["Verify coating", report.counts.verify || 0]);
+    if (report.mode === "surface") stats.push(["Pale marks", report.counts.mark || 0]);
+    if (report.mode === "debris") stats.push(["Foreign material", report.counts.foreign || 0], ["Small flecks", report.counts.speck || 0]);
+    stats.push(["Partial objects", report.counts.partial || 0]);
+  }
   $("stats").replaceChildren(...stats.map(([label, value]) => {
     const node = el("div");
     node.className = "stat";
@@ -236,7 +302,7 @@ function renderReport() {
   const columns = report.mode === "zones" ? ["Zone", "Grains", "Support cm²", "Grains/cm²"] :
     ["Object", "Status", report.mode === "grade" ? "Width mm" :
       report.mode === "coat" ? "Blue %" : report.mode === "surface" ? "Mark px" : "Area mm²"];
-  const list = report.mode === "zones" ? report.zones : report.rows;
+  const list = report.mode === "zones" ? report.zones : reportRows();
   const head = el("tr");
   head.append(...columns.map(name => el("th", name)));
   $("table-head").replaceChildren(head);
@@ -250,7 +316,8 @@ function renderReport() {
       tr.classList.add("picked");
       draw();
     }));
-    const values = report.mode === "zones" ? [row.grains, row.observed_cm2, row.grains_per_cm2] : [names[row.status], row.value];
+    const values = report.mode === "zones" ? [row.grains, row.observed_cm2, row.grains_per_cm2] :
+      [names[row.status], row.status === "clump" ? "≈" + row.value : row.value];
     tr.append(index, ...values.map(value => el("td", value === null ? "—" : String(value))));
     return tr;
   }));
@@ -281,7 +348,7 @@ function draw() {
   ctx.stroke();
   for (const [x, y] of reference) ctx.fillRect(x * width - 2.5, y * height - 2.5, 5, 5);
   if (!state.report || state.draw) return;
-  const items = state.report.mode === "zones" ? state.report.zones : state.report.rows;
+  const items = state.report.mode === "zones" ? state.report.zones : reportRows();
   for (const item of items) {
     if (item.status === "speck" && state.report.mode !== "debris" && item.id !== state.chosen) continue;
     const [x, y, w, h] = item.box;
@@ -411,6 +478,7 @@ $("remove").addEventListener("click", task(async () => {
 task(async () => {
   const config = await call("/config");
   state.modes = config.modes;
+  state.policies = config.policies || {};
   for (const [key, title] of Object.entries(state.modes)) {
     const control = button(title, () => changeMode(key));
     control.dataset.mode = key;

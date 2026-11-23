@@ -8,11 +8,17 @@ from image_lab.validation import Invalid
 
 MODES = {
     "count": "Visible count",
+    "tally": "Confirmed count",
     "grade": "Screen widths",
     "coat": "Blue coating",
     "debris": "Foreign material",
     "surface": "Pale surface marks",
     "zones": "Tray density",
+}
+
+POLICIES = {
+    "cautious": "Cautious",
+    "thorough": "Fewer re-shoots",
 }
 
 DEFAULTS = {
@@ -97,6 +103,12 @@ def settings(values, base=None):
 def mode(value):
     if not isinstance(value, str) or value not in MODES:
         raise Invalid("Choose an available inspection view.")
+    return value
+
+
+def policy(value):
+    if not isinstance(value, str) or value not in POLICIES:
+        raise Invalid("Choose a counting version.")
     return value
 
 

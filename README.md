@@ -11,14 +11,16 @@ Seedbench checks calibrated photographs of dry seed lots on a dark matte tray. U
 1. Add a single PNG, JPEG or WebP photo, or open **Photo preparation** to prepare a source image. Select **送往种盘** to use a current preparation result in the desk.
 2. Draw the inspection rectangle inside the edges of the tray. Use **Mark ruler** to drag between two marks on the same plane as the seeds. Enter the known length in millimeters.
 3. Set the brightness floor to separate the seeds from a matte background. Set the minimum projected area to label small flecks. Apply the settings and inspect **Visible count** for complete outlines and partial objects.
-4. **Screen widths** compares each grain's projected narrow width with the current opening. **Blue coating** estimates the blue coverage on each complete grain. **Foreign material** locates pale or elongated pieces. **Pale surface marks** highlights bright spots inside grain contours. **Tray density** compares the number of grain centers per observed area across a 3 × 3 grid.
+4. **Confirmed count** reads a tray with touching grains two ways at once: a cautious split that only separates pairs whose own shapes are still visible, and a fuller read that re-photographs as little as possible. Compare both on the photo, adopt one version, and the remaining clumps stay listed for a new photograph. **Screen widths** compares each grain's projected narrow width with the current opening. **Blue coating** estimates the blue coverage on each complete grain. **Foreign material** locates pale or elongated pieces. **Pale surface marks** highlights bright spots inside grain contours. **Tray density** compares the number of grain centers per observed area across a 3 × 3 grid.
 5. Click an object number to locate it on the photo. **Original** toggles the marks. **Save check** retains the readings at the current settings. Open a saved check to download its CSV and marked PNG.
 
 ## Input and approximation
 
 Use a perpendicular photograph of a single layer of separated grain. Each connected foreground region is measured as a projected object. A partial object touches the inspection boundary or missing image support. Width comes from the narrower side of its rotated minimum-area rectangle. Coating and pale marks are visible color cues. Use physical sieves and hand inspection for acceptance measurements.
 
-Each photo can be up to 20 MiB, 9 megapixels and 4,000 pixels on one side. Each check accepts 600 visible regions. One library holds up to 24 trays and 30 saved checks per tray. The demo is reproducibly generated for inspection and includes a reference rule, a clipped grain, blue coated grains, pale surface marks and chaff.
+Confirmed count estimates the typical single-grain size from the tray, then treats oversized regions as touching clumps. A clump is split only when its grains still separate under erosion — lightly for the cautious read, more firmly for the fewer-re-shoots read — and every piece still looks like a single grain. Naturally slender grains keep ordinary areas and widths, so they count as ordinary grains. Clumps that will not separate stay out of the confirmed total and are listed with an estimated grain count for re-photographing.
+
+Each photo can be up to 20 MiB, 9 megapixels and 4,000 pixels on one side. Each check accepts 600 visible regions. One library holds up to 24 trays and 30 saved checks per tray. The demo is reproducibly generated for inspection and includes a reference rule, a clipped grain, blue coated grains, pale surface marks, chaff, slender grains, lightly stuck pairs and a pressed clump.
 
 ## Code
 

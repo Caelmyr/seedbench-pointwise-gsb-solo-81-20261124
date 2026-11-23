@@ -43,15 +43,31 @@ def tray_photo():
     coated = ("#418aae", "#2c6a98", "#65aac4")
     for row in range(5):
         for col in range(9):
-            if (row, col) in {(0, 7), (0, 8), (1, 8), (4, 0), (4, 8), (2, 5)}:
+            if (row, col) in {(0, 7), (0, 8), (1, 8), (4, 0), (4, 8), (2, 5), (2, 2)}:
                 continue
             x, y = 83 + col * 96 + rng.randrange(-19, 20), 85 + row * 93 + rng.randrange(-18, 18)
             index = row * 9 + col
             blue = index % 5 == 2 or index % 9 == 3
-            kernel(draw, (x, y), rng.randrange(18, 29), rng.randrange(11, 19),
+            kernel(draw, (x, y), rng.randrange(20, 28), rng.randrange(12, 18),
                    rng.uniform(-2.7, 2.7), coated if blue else grain, rng, index % 7 == 4)
-    kernel(draw, (38, 315), 29, 17, 0.20, grain, rng, False)
-    for x, y in ((781, 116), (875, 115), (80, 438), (672, 312)):
+    kernel(draw, (38, 315), 27, 15, 0.20, grain, rng, False)
+    # Added grains use their own sequence so the layout above stays stable.
+    detail = Random(747)
+    # Naturally slender singles: ordinary grains in every count.
+    kernel(draw, (851, 178), 31, 9, 0.9, grain, detail, False)
+    kernel(draw, (70, 480), 30, 9, -1.1, grain, detail, False)
+    # Lightly stuck pairs with a visible waist between the grains.
+    kernel(draw, (733, 80), 25, 14, 1.55, grain, detail, False)
+    kernel(draw, (762, 84), 24, 14, 1.55, grain, detail, False)
+    kernel(draw, (272, 268), 24, 13, 1.52, grain, detail, False)
+    kernel(draw, (301, 264), 25, 14, 1.58, grain, detail, False)
+    # A firmer pair: only the fuller read of the photo separates it.
+    kernel(draw, (838, 453), 25, 13, 0.12, grain, detail, False)
+    kernel(draw, (878, 459), 24, 13, -0.08, grain, detail, False)
+    # Pressed together without a visible edge: left for a new photograph.
+    kernel(draw, (560, 269), 29, 18, 0.55, grain, detail, False)
+    kernel(draw, (568, 274), 28, 17, -0.35, grain, detail, False)
+    for x, y in ((781, 116), (875, 115), (80, 438), (715, 305)):
         draw.polygon([(x, y), (x+11, y-15), (x+25, y-8), (x+32, y+6),
                       (x+17, y+10), (x-2, y+7)], fill="#c2c1ad")
     for _ in range(27):

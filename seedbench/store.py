@@ -123,7 +123,10 @@ class Library:
             row = {**result, "id": identity(), "revision": revision, "saved": stamp(), "source": tray["blob"]}
             path = self.proof_path(tray_id, row["id"])
             write_json(path, row)
-            tray["proofs"].append({k: row[k] for k in ("id", "mode", "title", "saved")})
+            summary = {k: row[k] for k in ("id", "mode", "title", "saved")}
+            if row.get("policy"):
+                summary["policy"] = row["policy"]
+            tray["proofs"].append(summary)
             tray.update(revision=revision+1, updated=stamp())
             try:
                 write_json(self.tray_path(tray_id), tray)
