@@ -76,6 +76,21 @@
               <button id="save" class="primary" type="button">Save check</button>
             </div>
           </form>
+          <section id="quadrat" class="quadrat" data-mode="zones" hidden>
+            <div class="panel-top"><h2>Two counting windows</h2></div>
+            <form id="quadrat-form" class="quadrat-controls">
+              <label>Quadrat side <span>mm</span>
+                <input name="side_mm" type="number" min="1" max="500" step="any" required>
+              </label>
+              <button id="suggest-windows" class="secondary" type="submit">Suggest two windows</button>
+            </form>
+            <p id="quadrat-note" class="hint"></p>
+            <div class="actions quadrat-actions">
+              <button id="adopt-windows" class="primary" type="button" hidden>Adopt these windows</button>
+              <button id="clear-windows" class="tool" type="button" hidden>Clear windows</button>
+            </div>
+            <div id="window-cards"></div>
+          </section>
           <div id="downloads" class="downloads" hidden>
             <a id="csv" class="secondary" download>Download CSV</a>
             <a id="png" class="secondary" download>Marked PNG</a>

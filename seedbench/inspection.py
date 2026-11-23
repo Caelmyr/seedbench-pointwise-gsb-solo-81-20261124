@@ -77,7 +77,7 @@ def item_status(part, kind, mode, settings):
     return "grain", readable(part["area"])
 
 
-def report(observation, mode, settings):
+def report(observation, mode, settings, window_placements=None):
     counts = Counter()
     grains = []
     rows = []
@@ -94,10 +94,20 @@ def report(observation, mode, settings):
             "area_mm2": readable(part["area"]), "width_mm": readable(part["width"]),
         })
     zones = region_counts(grains, observation["area"], observation["supported"], observation["scale"]) if mode == "zones" else []
+    window_block = None
+    if mode == "zones" and window_placements is not None:
+        from . import quadrat
+        side = window_placements[0][2]
+        window_block = quadrat.build(
+            observation, settings, side,
+            [(left, top) for left, top, _ in window_placements],
+            None)
     return {
         "mode": mode, "title": MODES[mode], "area": list(observation["area"]),
         "mm_per_pixel": readable(observation["scale"], 6),
         "supported_pct": readable(100 * np.mean(observation["supported"]), 1),
         "visible_grains": len(grains), "counts": dict(counts), "rows": rows, "zones": zones,
+        "windows": window_block["windows"] if window_block else [],
+        "window_summary": window_block["window_summary"] if window_block else None,
         "settings": settings,
     }

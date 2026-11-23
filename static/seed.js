@@ -9,7 +9,7 @@ const modeInfo = {
   coat: "Compare the share of blue pixels on each complete grain. Glare and shadows can change this estimate.",
   debris: "Find light, low-color fragments and unusually long pieces before hand sorting.",
   surface: "Flag bright patches inside the grain. The marks are indications for hand review.",
-  zones: "Compare grain density across a 3 × 3 grid of equal image regions."
+  zones: "Compare grain density across a 3 × 3 grid of equal image regions. Suggest two square counting windows that track whole-tray density while sitting far apart."
 };
 const names = {
   grain: "Grain", partial: "Partial", speck: "Small fleck", foreign: "Foreign",
@@ -21,9 +21,12 @@ const ink = {
   through: "#62d3ed", verify: "#ffc875", mark: "#ffc875", foreign: "#ff9176",
   partial: "#e1c9f2", speck: "#bcb6a1",
 };
+const windowInk = ["#54d1ff", "#ffb35c"];
+const reviewInk = "#ff5d8f";
 const state = {
   tray: null, modes: {}, mode: "count", image: null, settings: null,
-  report: null, ticket: 0, saved: null, chosen: null, draw: null, drag: null, original: false
+  report: null, ticket: 0, saved: null, chosen: null, draw: null, drag: null, original: false,
+  suggested: null, adopted: null
 };
 
 async function call(path, method = "GET", data) {
@@ -118,6 +121,10 @@ async function openTray(id) {
   state.report = null;
   state.chosen = null;
   state.original = false;
+  state.suggested = null;
+  state.adopted = null;
+  $("quadrat-form").reset();
+  resetQuadratNote();
   turnOffDrawing();
   $("show-source").setAttribute("aria-pressed", "false");
   localStorage.setItem("seedbench-tray", id);
@@ -136,6 +143,9 @@ function renderChrome() {
   $("mode-info").textContent = modeInfo[mode];
   $("proof-label").textContent = state.saved ? "Saved check" : "Current tray";
   $("settings").hidden = Boolean(state.saved);
+  const quadrat = $("quadrat");
+  quadrat.hidden = mode !== "zones";
+  quadrat.querySelector(".quadrat-controls").hidden = Boolean(state.saved);
   for (const node of $("settings").querySelectorAll("[data-mode]")) node.hidden = node.dataset.mode !== mode;
   for (const node of $("modes").children) node.setAttribute("aria-current", String(node.dataset.mode === mode));
   const proofs = state.tray.proofs;
@@ -162,6 +172,7 @@ async function changeMode(mode) {
   state.saved = null;
   state.chosen = null;
   state.report = null;
+  resetQuadratNote();
   turnOffDrawing();
   renderChrome();
   renderReport();
@@ -170,11 +181,66 @@ async function changeMode(mode) {
 
 async function inspect() {
   const ticket = ++state.ticket;
-  const report = await call(trayPath() + "/preview", "POST", {mode: state.mode, settings: options()});
+  const body = {mode: state.mode, settings: options()};
+  if (state.mode === "zones" && state.adopted) body.windows = state.adopted;
+  let report;
+  try {
+    report = await call(trayPath() + "/preview", "POST", body);
+  } catch (error) {
+    if (state.mode === "zones" && state.adopted) {
+      state.adopted = null;
+      state.suggested = null;
+      message(error.message + " Choose new counting windows.", true);
+      renderReport();
+      return;
+    }
+    throw error;
+  }
   if (ticket !== state.ticket) return;
   state.report = report;
   state.chosen = null;
+  if (state.adopted && !report.windows?.length) state.adopted = null;
   renderReport();
+}
+
+async function suggestWindows(event) {
+  event.preventDefault();
+  const form = $("quadrat-form");
+  if (!form.reportValidity()) return;
+  const side = form.elements.side_mm.valueAsNumber;
+  const ticket = ++state.ticket;
+  const result = await call(trayPath() + "/windows", "POST",
+    {settings: options(), side_mm: side});
+  if (ticket !== state.ticket) return;
+  state.suggested = result;
+  state.adopted = null;
+  state.chosen = null;
+  message("Two windows suggested. Adopt them to lock the readings into the density view.");
+  renderReport();
+  renderQuadrat();
+}
+
+function adoptWindows() {
+  if (!state.suggested) return;
+  state.adopted = state.suggested.windows.map(window =>
+    ({box: window.box, side_mm: window.side_mm}));
+  state.chosen = null;
+  inspect().then(() => message("Windows adopted. Save the check to keep these readings."));
+}
+
+function clearWindows() {
+  state.suggested = null;
+  state.adopted = null;
+  state.chosen = null;
+  $("quadrat-note").textContent = "";
+  inspect().then(() => message("Counting windows cleared."));
+}
+
+function resetQuadratNote() {
+  state.suggested = null;
+  state.adopted = null;
+  $("quadrat-note").textContent = "";
+  $("window-cards").replaceChildren();
 }
 
 async function apply() {
@@ -183,14 +249,17 @@ async function apply() {
   if (row.id !== state.tray?.id) return;
   state.tray = updated;
   state.settings = structuredClone(updated.settings);
+  resetQuadratNote();
   await inspect();
-  message("Tray settings applied.");
+  message("Tray settings applied. Re-suggest counting windows for the new calibration.");
 }
 
 async function save() {
   if (!$("settings").reportValidity()) return;
   if (JSON.stringify(options()) !== JSON.stringify(state.tray.settings)) await apply();
-  const result = await call(trayPath() + "/proofs", "POST", {revision: state.tray.revision, mode: state.mode});
+  const body = {revision: state.tray.revision, mode: state.mode};
+  if (state.mode === "zones" && state.adopted) body.windows = state.adopted;
+  const result = await call(trayPath() + "/proofs", "POST", body);
   state.tray = result.tray;
   ++state.ticket;
   setProof(result.proof);
@@ -209,9 +278,59 @@ function setProof(report) {
   state.saved = report.id;
   state.report = report;
   state.chosen = null;
+  state.suggested = null;
+  state.adopted = report.windows?.length
+    ? report.windows.map(window => ({box: window.box, side_mm: window.side_mm}))
+    : null;
   turnOffDrawing();
   renderChrome();
   renderReport();
+}
+
+function windowBlock() {
+  if (state.report?.windows?.length) return state.report;
+  if (!state.saved && state.suggested) return state.suggested;
+  return null;
+}
+
+function renderQuadrat() {
+  const cards = $("window-cards");
+  const note = $("quadrat-note");
+  const block = windowBlock();
+  const showAdopt = Boolean(!state.saved && state.suggested && !state.report?.windows?.length);
+  $("adopt-windows").hidden = !showAdopt;
+  $("clear-windows").hidden = !block || Boolean(state.saved);
+  $("quadrat-form").querySelector("button").disabled = Boolean(state.saved);
+  $("quadrat-form").elements.side_mm.disabled = Boolean(state.saved);
+  if (!block) {
+    cards.replaceChildren();
+    if (!state.saved && !note.textContent) note.textContent = "Enter the physical side of your quadrat; the app places two non-overlapping squares far apart while keeping their combined density close to the whole tray.";
+    return;
+  }
+  const summary = block.window_summary;
+  const dev = summary.deviation_pct === null ? "—" :
+    (summary.deviation_pct > 0 ? "+" : "") + summary.deviation_pct.toFixed(1) + "%";
+  const sideText = summary.requested_side_mm && summary.requested_side_mm !== summary.side_mm ?
+    `${summary.requested_side_mm} mm asked, ${summary.side_mm} mm per pixel` :
+    `${summary.side_mm} mm`;
+  note.textContent = `Quadrat side ${sideText}. Two-window density ${summary.combined_per_cm2 ?? "—"} /cm² vs whole tray ${summary.tray_per_cm2 ?? "—"} /cm² (${dev}); centres ${summary.center_distance_mm} mm apart. Edge-cut and partial grains are flagged, not counted.`;
+  cards.replaceChildren(...block.windows.map((window, i) => {
+    const card = el("article");
+    card.className = "window-card";
+    const head = el("h3", `${window.id} · window`);
+    head.style.color = windowInk[i];
+    const review = window.review_grains
+      ? ` · ${window.review_grains} for review`
+      : " · none cut";
+    const lines = [
+      `Grains counted: ${window.grains}${review}`,
+      `Effective area: ${window.observed_cm2} cm² (${window.supported_pct}% supported)`,
+      `Density: ${window.grains_per_cm2 ?? "—"} grains/cm²`,
+      `Side: ${window.side_mm} mm`,
+    ];
+    card.append(head, ...lines.map(text => el("p", text)));
+    return card;
+  }));
 }
 
 function renderReport() {
@@ -227,6 +346,14 @@ function renderReport() {
   if (report.mode === "surface") stats.push(["Pale marks", report.counts.mark || 0]);
   if (report.mode === "debris") stats.push(["Foreign material", report.counts.foreign || 0], ["Small flecks", report.counts.speck || 0]);
   stats.push(["Partial objects", report.counts.partial || 0]);
+  if (report.mode === "zones" && report.window_summary) {
+    const s = report.window_summary;
+    stats.push(["Two-window grains", s.combined_grains],
+      ["Two-window /cm²", s.combined_per_cm2 ?? "—"],
+      ["Tray /cm²", s.tray_per_cm2 ?? "—"],
+      ["Density deviation", s.deviation_pct === null ? "—" :
+        (s.deviation_pct > 0 ? "+" : "") + s.deviation_pct.toFixed(1) + "%"]);
+  }
   $("stats").replaceChildren(...stats.map(([label, value]) => {
     const node = el("div");
     node.className = "stat";
@@ -254,6 +381,7 @@ function renderReport() {
     tr.append(index, ...values.map(value => el("td", value === null ? "—" : String(value))));
     return tr;
   }));
+  if (report.mode === "zones") renderQuadrat();
 }
 
 function draw() {
@@ -280,6 +408,7 @@ function draw() {
   ctx.lineTo(reference[1][0] * width, reference[1][1] * height);
   ctx.stroke();
   for (const [x, y] of reference) ctx.fillRect(x * width - 2.5, y * height - 2.5, 5, 5);
+  drawWindows();
   if (!state.report || state.draw) return;
   const items = state.report.mode === "zones" ? state.report.zones : state.report.rows;
   for (const item of items) {
@@ -299,6 +428,44 @@ function draw() {
     ctx.textBaseline = "top";
     ctx.fillText(title, x * sx + 3, labelY);
   }
+}
+
+function drawWindows() {
+  if (state.report?.mode !== "zones") return;
+  const block = windowBlock();
+  if (!block) return;
+  const {width, height} = canvas;
+  const sx = width / state.tray.width, sy = height / state.tray.height;
+  const suggestedOnly = !state.saved && block === state.suggested && !state.report?.windows?.length;
+  block.windows.forEach((window, i) => {
+    const [x, y, w, h] = window.box;
+    const ink = windowInk[i];
+    ctx.lineWidth = 2.2;
+    ctx.strokeStyle = ink;
+    ctx.setLineDash(suggestedOnly ? [7, 4] : []);
+    ctx.strokeRect(x * sx, y * sy, w * sx, h * sy);
+    ctx.setLineDash([]);
+    const label = `${window.id}  ${window.grains} · ${window.observed_cm2}cm²`;
+    ctx.font = "bold 11px system-ui";
+    ctx.textBaseline = "top";
+    const labelY = Math.min(y * sy + 2, height - 16);
+    ctx.fillStyle = "#10212b";
+    ctx.fillRect(x * sx + 2, labelY, ctx.measureText(label).width + 8, 15);
+    ctx.fillStyle = ink;
+    ctx.fillText(label, x * sx + 5, labelY + 2);
+    for (const item of window.review || []) {
+      const [rx, ry, rw, rh] = item.box;
+      ctx.lineWidth = 2;
+      ctx.strokeStyle = reviewInk;
+      ctx.strokeRect(rx * sx, ry * sy, rw * sx, rh * sy);
+      const tag = "?" + item.id;
+      ctx.font = "10px system-ui";
+      ctx.fillStyle = "#2b1320";
+      ctx.fillRect(rx * sx, Math.max(0, ry * sy - 13), ctx.measureText(tag).width + 5, 13);
+      ctx.fillStyle = reviewInk;
+      ctx.fillText(tag, rx * sx + 2, Math.max(0, ry * sy - 13));
+    }
+  });
 }
 
 function turnOffDrawing() {
@@ -358,8 +525,13 @@ canvas.addEventListener("pointerup", (event) => {
     Math.hypot(first[0] - end[0], first[1] - end[1]) >= 0.01;
   if (fits) {
     state.settings[type === "area" ? "area" : "reference"] = type === "area" ? bounds : [first, end];
+    if (state.adopted || state.suggested) {
+      resetQuadratNote();
+      message("Mark updated. The counting windows were cleared; re-suggest after applying.");
+    } else {
+      message("Mark updated. Apply and inspect to refresh the readings.");
+    }
     turnOffDrawing();
-    message("Mark updated. Apply and inspect to refresh the readings.");
   } else {
     state.drag = null;
     message("Drag a larger mark on the photograph.", true);
@@ -378,6 +550,9 @@ $("show-source").addEventListener("click", () => {
 $("draw-area").addEventListener("click", () => mark("area"));
 $("draw-ruler").addEventListener("click", () => mark("ruler"));
 $("settings").addEventListener("submit", task(apply));
+$("quadrat-form").addEventListener("submit", task(suggestWindows));
+$("adopt-windows").addEventListener("click", task(adoptWindows));
+$("clear-windows").addEventListener("click", task(clearWindows));
 $("save").addEventListener("click", task(save));
 $("tray-select").addEventListener("change", task(async event => {
   await openTray(event.target.value);

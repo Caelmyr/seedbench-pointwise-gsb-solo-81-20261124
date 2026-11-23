@@ -8,18 +8,12 @@ from PIL import Image
 
 from image_lab.validation import Invalid
 
-from . import demo, inspection, model, output, photo
+from . import demo, inspection, model, output, photo, quadrat
 from .store import Library
 
 
 def payload():
     return model.document(request.get_json(silent=True))
-
-
-def make_result(library, tray, mode, settings):
-    with Image.open(library.blob(tray["blob"])) as asset:
-        view = photo.observe(asset.convert("RGBA"), settings)
-    return inspection.report(view, mode, settings)
 
 
 def install(app, root):
@@ -102,7 +96,22 @@ def install(app, root):
         value = payload()
         tray = library.tray(tray_id)
         options = model.settings(value.get("settings", {}), tray["settings"])
-        return jsonify(make_result(library, tray, model.mode(value.get("mode")), options))
+        mode = model.mode(value.get("mode"))
+        with Image.open(library.blob(tray["blob"])) as asset:
+            view = photo.observe(asset.convert("RGBA"), options)
+        placements = quadrat.parse_windows(value.get("windows"), view) \
+            if mode == "zones" else None
+        return jsonify(inspection.report(view, mode, options, placements))
+
+    @api.post("/trays/<tray_id>/windows")
+    def suggest_windows(tray_id):
+        value = payload()
+        tray = library.tray(tray_id)
+        options = model.settings(value.get("settings", {}), tray["settings"])
+        side_mm = quadrat.side_mm_value(value.get("side_mm"))
+        with Image.open(library.blob(tray["blob"])) as asset:
+            view = photo.observe(asset.convert("RGBA"), options)
+        return jsonify(quadrat.suggest(view, options, side_mm))
 
     @api.post("/trays/<tray_id>/proofs")
     def retain(tray_id):
@@ -111,7 +120,11 @@ def install(app, root):
         revision = value.get("revision")
         library.revision(tray, revision)
         mode = model.mode(value.get("mode"))
-        result = make_result(library, tray, mode, tray["settings"])
+        with Image.open(library.blob(tray["blob"])) as asset:
+            view = photo.observe(asset.convert("RGBA"), tray["settings"])
+        placements = quadrat.parse_windows(value.get("windows"), view) \
+            if mode == "zones" else None
+        result = inspection.report(view, mode, tray["settings"], placements)
         current, saved = library.retain(tray_id, revision, result)
         return jsonify(tray=current, proof=saved), 201
 
