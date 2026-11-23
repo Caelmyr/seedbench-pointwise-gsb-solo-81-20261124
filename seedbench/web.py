@@ -111,7 +111,7 @@ def install(app, root):
         revision = value.get("revision")
         library.revision(tray, revision)
         mode = model.mode(value.get("mode"))
-        result = make_result(library, tray, mode, tray["settings"])
+        result = make_result(library, tray, mode, model.settings(tray["settings"]))
         current, saved = library.retain(tray_id, revision, result)
         return jsonify(tray=current, proof=saved), 201
 

@@ -39,11 +39,24 @@ def photo_box(frame, size):
             min(width, math.ceil(x1 * width)), min(height, math.ceil(y1 * height)))
 
 
-def narrow_width(component):
+def dimensions(component):
+    """Narrow width, long-axis length and long-axis bearing of a foreground region.
+
+    The bearing is the angle in degrees between the region's long axis and the
+    photo's horizontal, folded into [0, 90].
+    """
     points = cv2.findNonZero(component.astype(np.uint8))
     if points is None or len(points) < 3:
-        return 1.0
-    return float(min(cv2.minAreaRect(points)[1])) + 1.0
+        return 1.0, 1.0, 0.0
+    sides = cv2.minAreaRect(points)[1]
+    moments = cv2.moments(component.astype(np.uint8), binaryImage=True)
+    if moments["mu20"] + moments["mu02"] > 0:
+        theta = 0.5 * math.atan2(2 * moments["mu11"], moments["mu20"] - moments["mu02"])
+        bearing = math.degrees(theta) % 180
+        bearing = min(bearing, 180 - bearing)
+    else:
+        bearing = 0.0
+    return float(min(sides)) + 1.0, float(max(sides)) + 1.0, float(bearing)
 
 
 def luminance(rgb):
@@ -79,13 +92,16 @@ def observe(image, settings):
         crop_light = light[y:y+h, x:x+w]
         average = candidate_rgb[selection].mean(axis=0)
         cx, cy = centers[label]
+        width, length, axis = dimensions(selection)
         candidates.append({
             "id": len(candidates) + 1,
             "box": (x+x0, y+y0, w, h),
             "centre": (float(cx+x0), float(cy+y0)),
             "pixels": pixels,
             "area": pixels * scale * scale,
-            "width": narrow_width(selection) * scale,
+            "width": width * scale,
+            "length": length * scale,
+            "axis": axis,
             "elongation": max(w, h) / max(1, min(w, h)),
             "rgb": tuple(map(float, average)),
             "mask": selection,

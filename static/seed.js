@@ -6,6 +6,7 @@ const ctx = canvas.getContext("2d");
 const modeInfo = {
   count: "Review the complete grain outlines inside the marked tray area. Partial objects are shown separately.",
   grade: "Compare the narrow projected width of each complete grain with a single screen opening.",
+  slot: "Slotted screen with the hole length along the photo width. Grains pass as they lie, pass after a hand turn to the listed bearing, or never fit. The hand-turning choice sets the adopted grading.",
   coat: "Compare the share of blue pixels on each complete grain. Glare and shadows can change this estimate.",
   debris: "Find light, low-color fragments and unusually long pieces before hand sorting.",
   surface: "Flag bright patches inside the grain. The marks are indications for hand review.",
@@ -13,16 +14,16 @@ const modeInfo = {
 };
 const names = {
   grain: "Grain", partial: "Partial", speck: "Small fleck", foreign: "Foreign",
-  retained: "Retained", through: "Through"
+  retained: "Retained", through: "Through", turn: "Turn to pass"
 };
 Object.assign(names, {coated: "Coated", verify: "Verify coating", clear: "Clear", mark: "Pale mark"});
 const ink = {
   grain: "#a3ed83", retained: "#a3ed83", coated: "#a3ed83", clear: "#a3ed83",
-  through: "#62d3ed", verify: "#ffc875", mark: "#ffc875", foreign: "#ff9176",
-  partial: "#e1c9f2", speck: "#bcb6a1",
+  through: "#62d3ed", verify: "#ffc875", mark: "#ffc875", turn: "#ffc875",
+  foreign: "#ff9176", partial: "#e1c9f2", speck: "#bcb6a1",
 };
 const state = {
-  tray: null, modes: {}, mode: "count", image: null, settings: null,
+  tray: null, modes: {}, mode: "count", image: null, settings: null, defaults: {},
   report: null, ticket: 0, saved: null, chosen: null, draw: null, drag: null, original: false
 };
 
@@ -73,14 +74,14 @@ function trayPath() {
 
 function options() {
   const value = {...state.settings};
-  for (const field of $("settings").querySelectorAll("input[name]")) {
-    value[field.name] = field.valueAsNumber;
+  for (const field of $("settings").querySelectorAll("input[name], select[name]")) {
+    value[field.name] = field.tagName === "SELECT" ? field.value : field.valueAsNumber;
   }
   return value;
 }
 
 function setFields() {
-  for (const field of $("settings").querySelectorAll("input[name]")) {
+  for (const field of $("settings").querySelectorAll("input[name], select[name]")) {
     field.value = state.settings[field.name];
   }
 }
@@ -113,7 +114,7 @@ async function openTray(id) {
   await image.decode();
   state.tray = row;
   state.image = image;
-  state.settings = structuredClone(row.settings);
+  state.settings = {...state.defaults, ...structuredClone(row.settings)};
   state.saved = null;
   state.report = null;
   state.chosen = null;
@@ -132,7 +133,7 @@ async function openTray(id) {
 
 function renderChrome() {
   const mode = state.saved ? state.report.mode : state.mode;
-  $("current-mode").textContent = state.modes[mode];
+  $("current-mode").textContent = state.saved ? state.report.title : state.modes[mode];
   $("mode-info").textContent = modeInfo[mode];
   $("proof-label").textContent = state.saved ? "Saved check" : "Current tray";
   $("settings").hidden = Boolean(state.saved);
@@ -223,6 +224,14 @@ function renderReport() {
   if (!report) return;
   const stats = [["Visible grains", report.visible_grains]];
   if (report.mode === "grade") stats.push(["Through screen", report.counts.through || 0], ["Retained", report.counts.retained || 0]);
+  if (report.mode === "slot") {
+    stats.push(["Through as dropped", report.counts.through || 0], ["Turn to pass", report.counts.turn || 0],
+      ["Cannot pass", report.counts.retained || 0]);
+    if (report.adopted) {
+      const hand = report.settings.slot_policy === "turned" ? "hand-turned" : "as dropped";
+      stats.push([`Adopted through · ${hand}`, report.adopted.through], ["Adopted retained", report.adopted.retained]);
+    }
+  }
   if (report.mode === "coat") stats.push(["Coated", report.counts.coated || 0], ["Verify coating", report.counts.verify || 0]);
   if (report.mode === "surface") stats.push(["Pale marks", report.counts.mark || 0]);
   if (report.mode === "debris") stats.push(["Foreign material", report.counts.foreign || 0], ["Small flecks", report.counts.speck || 0]);
@@ -234,6 +243,7 @@ function renderReport() {
     return node;
   }));
   const columns = report.mode === "zones" ? ["Zone", "Grains", "Support cm²", "Grains/cm²"] :
+    report.mode === "slot" ? ["Object", "Status", "Turn °", "Axis °", "Length mm"] :
     ["Object", "Status", report.mode === "grade" ? "Width mm" :
       report.mode === "coat" ? "Blue %" : report.mode === "surface" ? "Mark px" : "Area mm²"];
   const list = report.mode === "zones" ? report.zones : report.rows;
@@ -250,8 +260,10 @@ function renderReport() {
       tr.classList.add("picked");
       draw();
     }));
-    const values = report.mode === "zones" ? [row.grains, row.observed_cm2, row.grains_per_cm2] : [names[row.status], row.value];
-    tr.append(index, ...values.map(value => el("td", value === null ? "—" : String(value))));
+    const values = report.mode === "zones" ? [row.grains, row.observed_cm2, row.grains_per_cm2] :
+      report.mode === "slot" ? [names[row.status], row.turn_deg, row.axis_deg, row.length_mm] :
+      [names[row.status], row.value];
+    tr.append(index, ...values.map(value => el("td", value === null || value === undefined ? "—" : String(value))));
     return tr;
   }));
 }
@@ -298,6 +310,24 @@ function draw() {
     ctx.fillStyle = color;
     ctx.textBaseline = "top";
     ctx.fillText(title, x * sx + 3, labelY);
+  }
+  if (state.report.mode === "slot") {
+    for (const item of state.report.rows) {
+      if (item.status !== "turn" || item.turn_deg === null || item.turn_deg === undefined) continue;
+      const half = (item.length_mm || 0) / state.report.mm_per_pixel / 2;
+      if (half <= 0) continue;
+      const theta = item.turn_deg * Math.PI / 180;
+      const dx = half * Math.cos(theta) * sx, dy = half * Math.sin(theta) * sy;
+      const [cx, cy] = [item.centre[0] * sx, item.centre[1] * sy];
+      for (const [color, lineWidth] of [["#161d18", 3.4], ["#f5f2e8", 1.4]]) {
+        ctx.strokeStyle = color;
+        ctx.lineWidth = lineWidth;
+        ctx.beginPath();
+        ctx.moveTo(cx - dx, cy - dy);
+        ctx.lineTo(cx + dx, cy + dy);
+        ctx.stroke();
+      }
+    }
   }
 }
 
@@ -411,6 +441,7 @@ $("remove").addEventListener("click", task(async () => {
 task(async () => {
   const config = await call("/config");
   state.modes = config.modes;
+  state.defaults = config.settings;
   for (const [key, title] of Object.entries(state.modes)) {
     const control = button(title, () => changeMode(key));
     control.dataset.mode = key;

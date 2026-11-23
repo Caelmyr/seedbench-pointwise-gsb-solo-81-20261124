@@ -9,10 +9,16 @@ from image_lab.validation import Invalid
 MODES = {
     "count": "Visible count",
     "grade": "Screen widths",
+    "slot": "Slot screen",
     "coat": "Blue coating",
     "debris": "Foreign material",
     "surface": "Pale surface marks",
     "zones": "Tray density",
+}
+
+POLICIES = {
+    "dropped": "Graded as dropped",
+    "turned": "Hand-turned grains count through",
 }
 
 DEFAULTS = {
@@ -22,6 +28,9 @@ DEFAULTS = {
     "threshold": 66,
     "min_seed_mm2": 2,
     "screen_mm": 4.4,
+    "slot_length_mm": 6.5,
+    "slot_width_mm": 3.5,
+    "slot_policy": "dropped",
     "blue_margin": 15,
     "pale_threshold": 208,
 }
@@ -72,7 +81,7 @@ def coordinates(values, length, label):
 
 
 def settings(values, base=None):
-    value = {**(base or DEFAULTS), **document(values)}
+    value = {**DEFAULTS, **(base or {}), **document(values)}
     area = coordinates(value["area"], 4, "the inspection rectangle")
     if area[2] - area[0] < 0.025 or area[3] - area[1] < 0.025:
         raise Invalid("Draw a larger inspection rectangle.")
@@ -82,6 +91,12 @@ def settings(values, base=None):
     reference = [coordinates(pt, 2, "the ruler reference") for pt in reference]
     if math.dist(reference[0], reference[1]) < 0.01:
         raise Invalid("Mark two spaced ends of the reference.")
+    slot_length = number(value["slot_length_mm"], "the slot length in mm", 0.1, 100)
+    slot_width = number(value["slot_width_mm"], "the slot width in mm", 0.1, 100)
+    if slot_length < slot_width:
+        raise Invalid("Enter a slot length at least as large as the slot width.")
+    if value.get("slot_policy") not in POLICIES:
+        raise Invalid("Choose whether hand-turned grains count as through.")
     return {
         "area": area,
         "reference": reference,
@@ -89,6 +104,9 @@ def settings(values, base=None):
         "threshold": number(value["threshold"], "the foreground brightness floor", 5, 250),
         "min_seed_mm2": number(value["min_seed_mm2"], "the minimum grain area in mm²", 0.05, 300),
         "screen_mm": number(value["screen_mm"], "the screen opening in mm", 0.1, 100),
+        "slot_length_mm": slot_length,
+        "slot_width_mm": slot_width,
+        "slot_policy": value["slot_policy"],
         "blue_margin": number(value["blue_margin"], "the blue excess", 1, 150),
         "pale_threshold": number(value["pale_threshold"], "the pale mark brightness", 60, 250),
     }

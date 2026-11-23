@@ -68,6 +68,12 @@
               <label>Brightness floor<input name="threshold" type="number" min="5" max="250" step="any" required></label>
               <label>Smallest grain <span>mm²</span><input name="min_seed_mm2" type="number" min="0.05" max="300" step="any" required></label>
               <label data-mode="grade">Screen opening <span>mm</span><input name="screen_mm" type="number" min="0.1" max="100" step="any" required></label>
+              <label data-mode="slot">Slot length <span>mm</span><input name="slot_length_mm" type="number" min="0.1" max="100" step="any" required></label>
+              <label data-mode="slot">Slot width <span>mm</span><input name="slot_width_mm" type="number" min="0.1" max="100" step="any" required></label>
+              <label data-mode="slot">Hand turning<select name="slot_policy">
+                <option value="dropped">Not turned · grade as dropped</option>
+                <option value="turned">Hand-turn · turned grains count through</option>
+              </select></label>
               <label data-mode="coat">Blue excess<input name="blue_margin" type="number" min="1" max="150" step="any" required></label>
               <label data-mode="surface">Pale mark floor<input name="pale_threshold" type="number" min="60" max="250" step="any" required></label>
             </div>
