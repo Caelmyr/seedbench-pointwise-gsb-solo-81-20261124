@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Seedbench · Tray inspection</title>
+  <link rel="stylesheet" href="/static/seed.css">
+  <script src="/static/seed.js" defer></script>
+</head>
+<body>
+  <header class="mast">
+    <a class="brand" href="/"><span class="emblem" aria-hidden="true">✦</span> Seedbench</a>
+    <a href="/prepare" class="prep-link">Photo preparation ↗</a>
+  </header>
+  <main>
+    <section class="heading">
+      <div><p class="eyebrow">Seed lot sampling</p><h1>Tray inspection</h1></div>
+      <div class="actions">
+        <button id="demo" class="secondary">Load synthetic tray</button>
+        <button id="upload-toggle" class="primary">Add photo</button>
+      </div>
+    </section>
+    <form id="upload-form" class="intake" hidden>
+      <label>Tray name<input name="title" maxlength="100" placeholder="Lot name"></label>
+      <label>Tray photo<input name="file" type="file" accept="image/png,image/jpeg,image/webp" required></label>
+      <button class="primary">Import tray</button>
+    </form>
+    <p id="notice" aria-live="polite"></p>
+    <div id="empty" class="empty">
+      <h2>Open a seed tray</h2>
+      <p>Photograph a single layer of dry seed on a dark matte tray. Place a ruler in the same plane as the sample.</p>
+    </div>
+    <section id="workspace" hidden>
+      <div class="bench-bar">
+        <label class="tray-label">Working tray <select id="tray-select" aria-label="Working tray"></select></label>
+        <span id="source-details"></span>
+        <details class="tray-actions">
+          <summary>Manage trays</summary>
+          <button id="remove" class="danger">Remove this tray</button>
+        </details>
+      </div>
+      <nav id="modes" class="mode-bar" aria-label="Inspection views"></nav>
+      <div class="work-grid">
+        <section class="plate panel" aria-label="Tray photograph">
+          <div class="panel-top">
+            <h2>Source photograph</h2>
+            <div class="tools">
+              <button id="show-source" class="tool" aria-pressed="false">Original</button>
+              <button id="draw-area" class="tool" aria-pressed="false">Set area</button>
+              <button id="draw-ruler" class="tool" aria-pressed="false">Mark ruler</button>
+            </div>
+          </div>
+          <div class="photo-stage">
+            <canvas id="canvas" tabindex="0" aria-label="Seed tray photograph with markings"></canvas>
+          </div>
+          <div class="plate-caption"><span id="photo-caption"></span><span id="measure-caption"></span></div>
+          <div class="evidence-list">
+            <div class="panel-top"><h2>Saved checks</h2><span id="proof-count"></span></div>
+            <div id="proofs"></div>
+          </div>
+        </section>
+        <section class="panel control" aria-label="Inspection controls">
+          <div class="panel-top"><h2 id="current-mode"></h2><span id="proof-label"></span></div>
+          <p id="mode-info" class="hint"></p>
+          <form id="settings">
+            <div class="field-grid">
+              <label>Ruler length <span>mm</span><input name="reference_mm" type="number" min="0.1" max="1000" step="any" required></label>
+              <label>Brightness floor<input name="threshold" type="number" min="5" max="250" step="any" required></label>
+              <label>Smallest grain <span>mm²</span><input name="min_seed_mm2" type="number" min="0.05" max="300" step="any" required></label>
+              <label data-mode="grade">Screen opening <span>mm</span><input name="screen_mm" type="number" min="0.1" max="100" step="any" required></label>
+              <label data-mode="coat">Blue excess<input name="blue_margin" type="number" min="1" max="150" step="any" required></label>
+              <label data-mode="surface">Pale mark floor<input name="pale_threshold" type="number" min="60" max="250" step="any" required></label>
+            </div>
+            <div class="actions run">
+              <button id="apply" class="secondary" type="submit">Apply &amp; inspect</button>
+              <button id="save" class="primary" type="button">Save check</button>
+            </div>
+          </form>
+          <div id="downloads" class="downloads" hidden>
+            <a id="csv" class="secondary" download>Download CSV</a>
+            <a id="png" class="secondary" download>Marked PNG</a>
+          </div>
+          <div id="results" hidden>
+            <div class="stats" id="stats"></div>
+            <div class="table-wrap">
+              <table>
+                <thead id="table-head"></thead>
+                <tbody id="rows"></tbody>
+              </table>
+            </div>
+          </div>
+        </section>
+      </div>
+    </section>
+  </main>
+</body>
+</html>
